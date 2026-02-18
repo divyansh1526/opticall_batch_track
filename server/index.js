@@ -10,15 +10,6 @@ const port = 3000;
 app.use(cors());
 app.use(express.json());
 
-// Database connection placeholder
-// const pool = new Pool({
-//   user: 'postgres',
-//   host: 'localhost',
-//   database: 'opticall',
-//   password: 'password',
-//   port: 5432,
-// });
-
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
@@ -48,7 +39,7 @@ app.post('/api/login', (req, res) => {
   ) {
     const user = { name: username };
     const accessToken = jwt.sign(user, process.env.JWT_SECRET, {
-      expiresIn: '12h',
+      expiresIn: '30d',
     });
     res.json({ accessToken });
   } else {
@@ -80,7 +71,7 @@ app.get('/api/report', authenticateToken, async (req, res) => {
         FROM dates d
         LEFT JOIN batch_jobs bj ON d = bj.created_at::date
         GROUP BY d, bj.status
-        ORDER BY d, bj.status DESC
+        ORDER BY d DESC, bj.status DESC
       `;
     } else if (type === 'call') {
       query = `
@@ -94,7 +85,7 @@ app.get('/api/report', authenticateToken, async (req, res) => {
         FROM dates d
         LEFT JOIN scheduler s ON d = s.processed_date
         GROUP BY d, s.call_status
-        ORDER BY d, s.call_status DESC
+        ORDER BY d DESC, s.call_status DESC
       `;
     } else {
       return res.status(400).json({ error: 'Invalid report type' });
