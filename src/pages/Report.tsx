@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -18,12 +18,17 @@ interface ReportData {
   count: number;
 }
 
+function statusStyle(status: string) {
+  if (status === 'Completed') return 'bg-green-100 text-green-800';
+  if (status === 'Failed') return 'bg-red-100 text-red-800';
+  return 'bg-yellow-100 text-yellow-800';
+}
+
 export default function Report() {
   const [searchParams] = useSearchParams();
   const reportType = searchParams.get('type') === 'batch' ? 'Batch' : 'Call';
   const navigate = useNavigate();
 
-  // Set default dates: From = Yesterday, To = Today
   const today = new Date().toISOString().split('T')[0];
   const yesterdayDate = new Date();
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -33,19 +38,20 @@ export default function Report() {
   const [toDate, setToDate] = useState(today);
   const [data, setData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
+    setSelectedStatus('');
     try {
-      const data = await fetchReport({
+      const result = await fetchReport({
         type: searchParams.get('type') === 'batch' ? 'batch' : 'call',
         fromDate,
         toDate,
       });
-      setData(data);
+      setData(result);
     } catch (error) {
       console.error(error);
-      // Optionally handle error state here
     } finally {
       setLoading(false);
     }
@@ -55,6 +61,21 @@ export default function Report() {
     e.preventDefault();
     fetchData();
   };
+
+  const availableStatuses = useMemo(
+    () => Array.from(new Set(data.map((r) => r.status))).sort(),
+    [data]
+  );
+
+  const filteredData = useMemo(
+    () => (selectedStatus ? data.filter((r) => r.status === selectedStatus) : data),
+    [data, selectedStatus]
+  );
+
+  const totalCount = useMemo(
+    () => filteredData.reduce((sum, r) => sum + r.count, 0),
+    [filteredData]
+  );
 
   return (
     <div className='space-y-4'>
@@ -97,47 +118,68 @@ export default function Report() {
       </Card>
 
       {data.length > 0 && (
-        <Card>
-          <CardContent className='p-0 overflow-hidden'>
-            <div className='overflow-x-auto'>
-              <table className='w-full text-sm text-left'>
-                <thead className='text-xs text-gray-700 uppercase bg-gray-50 border-b'>
-                  <tr>
-                    <th className='px-6 py-3'>Date</th>
-                    <th className='px-6 py-3'>Status</th>
-                    <th className='px-6 py-3 text-right'>Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.map((row, index) => (
-                    <tr
-                      key={index}
-                      className='bg-white border-b last:border-0 hover:bg-gray-50'
-                    >
-                      <td className='px-6 py-4 font-medium text-gray-900 whitespace-nowrap'>
-                        {row.date}
-                      </td>
-                      <td className='px-6 py-4'>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            row.status === 'Completed'
-                              ? 'bg-green-100 text-green-800'
-                              : row.status === 'Failed'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className='px-6 py-4 text-right'>{row.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <>
+          <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+            <div className='flex items-center gap-2'>
+              <label className='text-sm font-medium text-gray-700'>Filter by Status:</label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className='text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+              >
+                <option value=''>All Statuses</option>
+                {availableStatuses.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
-          </CardContent>
-        </Card>
+
+            <div className='flex items-center gap-2 text-sm'>
+              <span className='text-gray-500'>
+                {selectedStatus ? `Total "${selectedStatus}":` : 'Total Calls:'}
+              </span>
+              <span className='font-semibold text-gray-900 bg-gray-100 px-3 py-1 rounded-full'>
+                {totalCount.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className='p-0 overflow-hidden'>
+              <div className='overflow-x-auto'>
+                <table className='w-full text-sm text-left'>
+                  <thead className='text-xs text-gray-700 uppercase bg-gray-50 border-b'>
+                    <tr>
+                      <th className='px-6 py-3'>Date</th>
+                      <th className='px-6 py-3'>Status</th>
+                      <th className='px-6 py-3 text-right'>Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredData.map((row, index) => (
+                      <tr
+                        key={index}
+                        className='bg-white border-b last:border-0 hover:bg-gray-50'
+                      >
+                        <td className='px-6 py-4 font-medium text-gray-900 whitespace-nowrap'>
+                          {row.date}
+                        </td>
+                        <td className='px-6 py-4'>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle(row.status)}`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className='px-6 py-4 text-right'>{row.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

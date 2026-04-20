@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api', // Adjust if backend runs on different port
+  baseURL: 'https://pkdoq2nafh.execute-api.ap-south-1.amazonaws.com/api',
 });
 
 // Request interceptor to add the auth token header to requests

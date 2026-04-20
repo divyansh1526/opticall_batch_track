@@ -3,18 +3,27 @@ import express from 'express';
 import cors from 'cors';
 import { pool } from './db.js';
 import jwt from 'jsonwebtoken';
+import { MongoClient } from 'mongodb';
+import bcrypt from 'bcryptjs';
 
 const app = express();
 const port = 3000;
 
-app.use(cors());
+app.use(cors({ origin: '*', allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json());
+
+let mongoClient;
+async function getMongoDb() {
+  if (!mongoClient) {
+    mongoClient = new MongoClient(process.env.MONGO_DB_URL);
+    await mongoClient.connect();
+  }
+  return mongoClient.db('test');
+}
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
-
-// ... imports
 
 // Middleware to verify JWT
 const authenticateToken = (req, res, next) => {
@@ -30,20 +39,33 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
-  if (
-    username === process.env.ADMIN_USERNAME &&
-    password === process.env.ADMIN_PASSWORD
-  ) {
-    const user = { name: username };
-    const accessToken = jwt.sign(user, process.env.JWT_SECRET, {
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  try {
+    const db = await getMongoDb();
+    const user = await db.collection('users').findOne({ username });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const accessToken = jwt.sign({ name: user.username }, process.env.JWT_SECRET, {
       expiresIn: '30d',
     });
     res.json({ accessToken });
-  } else {
-    res.status(401).json({ error: 'Invalid credentials' });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
